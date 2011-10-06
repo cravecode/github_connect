@@ -1,0 +1,4 @@
+name = Github Connect
+description = Enables connecting Drupal accounts with Github.
+package = Github
+core = 7.x

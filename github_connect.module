@@ -1,0 +1,344 @@
+<?php
+
+/**
+ * @file
+ * Gives site visitors the ability to log in with GitHub (http://github.com).
+ */
+
+/**
+ * Implements hook_help().
+ */
+function github_connect_help($path, $arg) {
+  switch ($path) {
+    case 'admin/config/people/github':
+      return t('Gives site visitors the ability to login to Drupal with their GitHub account.');
+  }
+}
+
+
+/**
+ * Implements hook_block_info().
+ */
+function github_connect_block_info() {
+  $blocks['github_connect-login'] = array(
+    'info' => t('Github connect'),
+  );
+
+  return $blocks;
+}
+
+
+/**
+ * Implements hook_block_view().
+ */
+function github_connect_block_view($delta = '') {
+  $block = array();
+
+  switch ($delta) {
+    case 'github_connect-login':
+      return array(
+        'subject' => '',
+        'content' => github_connect_connect_block(),
+      );
+      break;
+
+  }
+  return $block;
+}
+
+
+/**
+ * GitHub connect block.
+ */
+function github_connect_connect_block() {
+  if (user_is_logged_in()) return FALSE;
+
+  $client_id = variable_get('github_connect_client_id');
+  $link = 'https://github.com/login/oauth/authorize?client_id=' . $client_id;
+  $output = l(t('Login with GitHub'), $link);
+
+  return $output;
+}
+
+
+/*
+ * Implements hook_menu().
+ */
+function github_connect_menu() {
+  // Admin settings page.
+  $items['admin/config/people/github'] = array(
+    'title' => 'Github settings',
+    'description' => 'Settings for connecting with Github.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('github_connect_admin_settings_form'),
+    'access arguments' => array('administer github_connect'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'github_connect.admin.inc',
+  );
+  // Callback for oauth token request from Github API.
+  $items['github/register/create'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => 'Connected to Github',
+    'page callback' => 'github_connect_get_access_token',
+    'access callback' => 'user_is_anonymous',
+    // 'file' => 'github_connect.pages.inc',
+  );
+  // Require password when merging accounts
+  $items['github/verify/email/%/%'] = array(
+    'type' => MENU_CALLBACK,
+    'title' => 'Merge accounts',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('github_connect_verify_email_form', 3, 4),
+    'access callback' => TRUE,
+  );
+
+  return $items;
+}
+
+
+/**
+ * Implements hook_user_delete().
+ */
+function github_connect_user_delete($account) {
+  // Delete the user from github_connect_users table.
+  if (github_connect_get_user_token($account->uid)) {
+    db_delete('github_connect_users')
+      ->condition('uid', $account->uid)
+      ->execute();
+  }
+}
+
+
+/*
+ * Custom access callback.
+ */
+function github_connect_get_access_token() {
+  $client_id = variable_get('github_connect_client_id');
+  $client_secret = variable_get('github_connect_client_secret');
+
+  // The response code after first call to GitHub.
+  $code = $_GET['code'];
+
+  $url = 'https://github.com/login/oauth/access_token?';
+  $options = array(
+    'data' => 'client_id=' . $client_id . '&client_secret=' . $client_secret . '&code=' . $code,
+    'method' => 'POST',
+  );
+  $response = drupal_http_request($url, $options);
+  $token = $response->data;
+
+  if ($token) {
+    // Check if a user exists for the token.
+    $uid = github_connect_get_token_user($token);
+
+    if (!empty($uid)) {
+      // If there is a user with the token log that user in.
+      $form_state['uid'] = $uid;
+      user_login_submit(array(), $form_state);
+      drupal_goto();
+      return;
+    }
+    else {
+      // Collects the User information from GitHub.
+      $options = array(
+        'method' => 'GET',
+        'timeout' => 7200,
+      );
+      $github_user = drupal_http_request('https://api.github.com/user?' . $token, $options);
+      $ghuser = drupal_json_decode($github_user->data);
+
+      if ($ghuser['email']) {
+        $existing_user = user_load_by_mail($ghuser['email']);
+        if ($existing_user) {
+          drupal_goto('github/verify/email/' . $existing_user->uid . '/' . $token);
+        }
+        else {
+          _github_connect_register($ghuser, $token);
+        }
+      }
+      else {
+        drupal_set_message(t('We could not log you in due to an error accessing your GitHub account.'), 'error');
+        return;
+      }
+    }
+  }
+  else {
+    drupal_set_message(t('Failed connecting to GitHub.'), 'error');
+  }
+}
+
+
+/*
+ * Save the new GitHub user in github_connect_users
+ */
+function _github_connect_save_github_user($account, $token) {
+  // Store GitHub user with token.
+  if ($account) {
+    db_insert('github_connect_users')
+      ->fields(array(
+        'uid' => $account->uid,
+        'access_token' => $token,
+        'timestamp' => REQUEST_TIME,
+      ))
+      ->execute();
+
+    // Log in the stored user.
+    $form_state['uid'] = $account->uid;
+    user_login_submit(array(), $form_state);
+    drupal_set_message(t('You are now connected with your GitHub account.'));
+
+    drupal_goto();
+  }
+}
+
+
+/*
+ * Register new user.
+ */
+function _github_connect_register($ghuser, $token) {
+  $username = $ghuser['login'];
+
+  // Check if username exists and assign a new username.
+  // @TODO If username already exists the user should be able to pick a new one.
+  // @TODO User should be notified that he has been assigned a new username.
+  if (_github_connect_username_stored($username)) {
+    $i = 1;
+    do {
+      if (_github_connect_username_stored($username . $i)) {
+        $i++;
+      }
+      elseif ($i === 10) {
+        drupal_set_message(t('Error connecting account. A username could not be generated.'), 'error');
+        return;
+      }
+      else {
+        // If availible the user will be given $username_[number].
+        $username = $username . '_' . $i;
+        break;
+      }
+    }
+    // Limit to 10.
+    while ($i <= 10);
+  }
+
+  $userinfo = array(
+    'name' => $username,
+    'mail' => $ghuser['email'],
+    'pass' => user_password(),
+    'status' => 1,
+    'access' => REQUEST_TIME,
+    'init' => $ghuser['email'],
+  );
+
+  $account = user_save('', $userinfo);
+
+  if ($account) {
+    _github_connect_save_github_user($account, $token);
+  }
+  else {
+    drupal_set_message(t('Error saving new user.'), 'error');
+    return;
+  }
+}
+
+
+/**
+ * Check to see if username is already stored
+ */
+function _github_connect_username_stored($name) {
+  $query = db_select('users', 'u');
+  $query->fields('u', array('uid'));
+  $query->condition('name', $name, '=');
+  return $query->execute()->fetchField();
+}
+
+
+/**
+ * Require user to verify email address when merging accounts.
+ */
+function github_connect_verify_email_form($form, &$form_state, $uid, $token) {
+  $account = user_load($uid);
+
+  $form['message'] = array(
+    '#type' => 'item',
+    '#title' => t('Email address in use'),
+    '#markup' => t('There is already an account associated with your GitHub email address. Type your !site account password to merge accounts.', array('!site' => variable_get('site_name'))),
+  );
+  $form['name'] = array('#type' => 'hidden', '#value' => $account->name);
+  $form['pass'] = array('#type' => 'password',
+    '#title' => t('Password'),
+    '#description' => t('Enter your password.'),
+    '#required' => TRUE,
+  );
+  $form['token'] = array('#type' => 'hidden', '#value' => $token);
+  $form['actions'] = array('#type' => 'actions');
+  $form['actions']['submit'] = array('#type' => 'submit', '#value' => t('Merge accounts'));
+  $form['#validate'] = array('github_connect_verify_email_form_validate');
+  $form['#submit'] = array('github_connect_verify_email_form_submit');
+
+  return $form;
+}
+
+
+/**
+ * Validation to check correct password when merging.
+ */
+function github_connect_verify_email_form_validate($form, &$form_state) {
+  $name = $form_state['values']['name'];
+  $password = $form_state['values']['pass'];
+
+  if (user_authenticate($name, $password) == FALSE) {
+    form_set_error('pass', t('Incorrect password.'));
+  }
+}
+
+
+/**
+ * Custom submit function to save user when merging.
+ */
+function github_connect_verify_email_form_submit($form, &$form_state) {
+  $account = user_load_by_name($form_state['values']['name']);
+  $token = $form_state['values']['token'];
+
+  _github_connect_save_github_user($account, $token);
+}
+
+
+/**
+ * Get User id from GitHub access token
+ *
+ * @param $token Access token from GitHub
+ * @return $uid Drupal user id
+ */
+function github_connect_get_token_user($token) {
+  if ($token) {
+    $result = db_select('github_connect_users', 'g_u')
+    ->fields('g_u', array('uid', 'access_token'))
+    ->condition('access_token', $token, '=')
+    ->execute()
+    ->fetchAssoc();
+
+    $uid = $result['uid'];
+    return $uid;
+  }
+}
+
+
+/**
+ * Get GitHub access token for User
+ *
+ * @param $uid User user id
+ * @return $token Access token from GitHub
+ */
+function github_connect_get_user_token($uid) {
+  if ($uid) {
+    $result = db_select('github_connect_users', 'g_u')
+    ->fields('g_u', array('uid', 'access_token'))
+    ->condition('uid', $uid, '=')
+    ->execute()
+    ->fetchAssoc();
+
+    $token = $result['access_token'];
+    return $token;
+  }
+}
