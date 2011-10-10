@@ -157,13 +157,14 @@ function github_connect_get_access_token() {
         }
       }
       else {
-        drupal_set_message(t('We could not log you in due to an error accessing your GitHub account.'), 'error');
-        return;
+        drupal_set_message(t('We could not log you in due to an error accessing your GitHub account. You need to have a public email address registered with your GitHub account.'), 'error');
+        drupal_goto();
       }
     }
   }
   else {
     drupal_set_message(t('Failed connecting to GitHub.'), 'error');
+    drupal_goto();
   }
 }
 
