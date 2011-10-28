@@ -213,8 +213,9 @@ function _github_connect_register($ghuser, $token) {
         return;
       }
       else {
-        // If availible the user will be given $username_[number].
+        // If available the user will be given $username_[number].
         $username = $username . '_' . $i;
+        drupal_set_message(t('You have been assigned a username edit you account to change it.'));
         break;
       }
     }
