@@ -51,7 +51,9 @@ function github_connect_block_view($delta = '') {
  * GitHub connect block.
  */
 function github_connect_connect_block() {
-  if (user_is_logged_in()) return FALSE;
+  if (user_is_logged_in()) {
+    return FALSE;
+  }
 
   $client_id = variable_get('github_connect_client_id');
   $link = 'https://github.com/login/oauth/authorize?client_id=' . $client_id;
@@ -61,7 +63,7 @@ function github_connect_connect_block() {
 }
 
 
-/*
+/**
  * Implements hook_menu().
  */
 function github_connect_menu() {
@@ -81,7 +83,6 @@ function github_connect_menu() {
     'title' => 'Connected to Github',
     'page callback' => 'github_connect_get_access_token',
     'access callback' => 'user_is_anonymous',
-    // 'file' => 'github_connect.pages.inc',
   );
   // Require password when merging accounts
   $items['github/verify/email/%/%'] = array(
@@ -109,7 +110,7 @@ function github_connect_user_delete($account) {
 }
 
 
-/*
+/**
  * Custom access callback.
  */
 function github_connect_get_access_token() {
@@ -169,7 +170,7 @@ function github_connect_get_access_token() {
 }
 
 
-/*
+/**
  * Save the new GitHub user in github_connect_users
  */
 function _github_connect_save_github_user($account, $token) {
@@ -193,7 +194,7 @@ function _github_connect_save_github_user($account, $token) {
 }
 
 
-/*
+/**
  * Register new user.
  */
 function _github_connect_register($ghuser, $token) {
@@ -309,7 +310,7 @@ function github_connect_verify_email_form_submit($form, &$form_state) {
 
 
 /**
- * Get User id from GitHub access token
+ * Get User id from GitHub access token.
  *
  * @param $token Access token from GitHub
  * @return $uid Drupal user id

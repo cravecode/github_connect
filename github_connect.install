@@ -17,7 +17,8 @@ function github_connect_install() {
 function github_connect_uninstall() {
   // Delete our module's variable from the variables table.
   variable_del('github_connect_client_id');
-  variable_del('github_connect_client_secret');}
+  variable_del('github_connect_client_secret');
+}
 
 /**
  * Implements hook_schema().
