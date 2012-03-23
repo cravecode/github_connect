@@ -45,7 +45,7 @@ function github_connect_get_access_token() {
         }
         else {
           // Otherwise make sure there is no account with the same username
-          if ($existing_user_by_name = user_load_by_name($github_user['email'])) {
+          if ($existing_user_by_name = user_load_by_name($github_user['login'])) {
             drupal_goto('github/username/' . $existing_user_by_name->uid . '/' . $token);
           } else {
             _github_connect_register($github_user, $token);
