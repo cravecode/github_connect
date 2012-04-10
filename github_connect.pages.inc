@@ -71,7 +71,7 @@ function github_connect_get_access_token() {
         if ($github_user['html_url']) {
           _github_connect_save_github_user($user, $token);
 
-          module_invoke_all('github_added', $user, $github_user);
+          module_invoke_all('github_added', $user, $github_user['name']);
 
           drupal_set_message(t('Your GitHub account is now connected.'));
           drupal_goto('user/' . $user->uid . '/github');
@@ -220,6 +220,8 @@ function github_connect_verify_email_form_submit($form, &$form_state) {
   // Log in the connected user.
   _github_connect_user_login($account);
   drupal_set_message(t('You are now connected with your GitHub account.'));
+
+  module_invoke_all('github_added', $account, _github_connect_get_github_username($account));
 
   drupal_goto();
 }
