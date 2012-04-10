@@ -75,6 +75,16 @@ function github_connect_menu() {
   return $items;
 }
 
+function github_connect_hook_info() {
+  $hooks['github_added'] = array(
+    'group' => 'github',
+  );
+  $hooks['github_removed'] = array(
+    'group' => 'github',
+  );
+  return $hooks;
+}
+
 
 /**
  * Implements hook_block_info().

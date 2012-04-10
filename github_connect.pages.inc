@@ -71,6 +71,8 @@ function github_connect_get_access_token() {
         if ($github_user['html_url']) {
           _github_connect_save_github_user($user, $token);
 
+          module_invoke_all('github_added', $user, $github_user);
+
           drupal_set_message(t('Your GitHub account is now connected.'));
           drupal_goto('user/' . $user->uid . '/github');
         }
@@ -89,20 +91,6 @@ function github_connect_get_access_token() {
  */
 function github_user_account($account) {
   drupal_set_title(format_username($account));
-
-  // Check to see if we got a response
-  $result = openid_complete();
-  if ($result['status'] == 'success') {
-    $identity = $result['openid.claimed_id'];
-    $query = db_insert('authmap')
-      ->fields(array(
-      'uid' => $account->uid,
-      'authname' => $identity,
-      'module' => 'openid',
-    ))
-      ->execute();
-    drupal_set_message(t('Successfully added %identity', array('%identity' => $identity)));
-  }
 
   $header = array(t('GitHub account'), t('Operations'));
   $rows = array();
@@ -149,28 +137,35 @@ function github_user_connect_submit($form, &$form_state) {
  * Menu callback; Disconnect the specified Github account from the system.
  */
 function github_connect_user_delete_form($form, $form_state, $account, $aid = 0) {
-  $authname = db_query("SELECT authname FROM {authmap} WHERE uid = :uid AND aid = :aid AND module = 'github_connect'", array(
-    ':uid' => $account->uid,
-    ':aid' => $aid,
-  ))
-    ->fetchField();
-  return confirm_form(array(), t('Are you sure you want to disconnect the Github account %authname for %user?', array('%authname' => $authname, '%user' => $account->name)), 'user/' . $account->uid . '/github');
+  module_load_include('inc', 'github_connect');
+
+  $github_username = _github_connect_get_github_username($account);
+  $form['account'] = array(
+    '#type' => 'value',
+    '#value' => $account,
+  );
+  $form['github_username'] = array(
+    '#type' => 'value',
+    '#value' => $github_username,
+  );
+  return confirm_form($form, t('Are you sure you want to disconnect the Github account %authname for %user?', array('%authname' => $github_username, '%user' => $account->name)), 'user/' . $account->uid . '/github');
 }
 
 function github_connect_user_delete_form_submit($form, &$form_state) {
   module_load_include('inc', 'github_connect');
 
   $query1 = db_delete('authmap')
-    ->condition('uid', $form_state['build_info']['args'][0]->uid)
+    ->condition('uid', $form_state['values']['account']->uid)
     ->condition('aid', $form_state['build_info']['args'][1])
     ->condition('module', 'github_connect')
     ->execute();
 
   // Delete the user from github_connect_users table.
   $query2 = db_delete('github_connect_users')
-    ->condition('uid', $form_state['build_info']['args'][0]->uid)
+    ->condition('uid', $form_state['values']['account']->uid)
     ->execute();
   if ($query1 && $query2) {
+    module_invoke_all('github_removed', $form_state['values']['account'], $form_state['values']['github_username']);
     drupal_set_message(t('Github account disconnected.'));
   }
 

@@ -157,3 +157,17 @@ function _github_connect_get_github_user_emails($token) {
 
   return $github_user_emails;
 }
+
+function _github_connect_get_github_username($account) {
+  $result = db_query("SELECT * FROM {authmap} WHERE module='github_connect' AND uid=:uid", array(':uid' => $account->uid));
+  $identity = $result->fetchAssoc();
+
+  if (empty($identity)) {
+    return FALSE;
+  }
+
+  $un = explode('/', $identity['authname']);
+  $github_username = $un[count($un)-1];
+
+  return $github_username;
+}
