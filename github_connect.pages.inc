@@ -69,11 +69,6 @@ function github_connect_get_access_token() {
       else {
         $github_user = _github_connect_get_github_user_info($token);
 
-        if (!$github_user['email']) {
-          drupal_set_message(t('We could not connect your GitHub account. You need to have a public email address registered with your GitHub account.'), 'error');
-          drupal_goto('user/' . $user->uid . '/github');
-        }
-
         if ($github_user['html_url']) {
           _github_connect_save_github_user($user, $token);
 
@@ -131,10 +126,12 @@ function github_user_connect() {
 }
 
 function github_user_connect_submit($form, &$form_state) {
+  global $base_url;
+
   $return_to = url('user/' . arg(1) . '/github', array('absolute' => TRUE));
 
   $client_id = variable_get('github_connect_client_id');
-  $link = 'https://github.com/login/oauth/authorize?client_id=' . $client_id;
+  $link = 'https://github.com/login/oauth/authorize?client_id=' . $client_id . '&scope=user,public&redirect_uri=' . urlencode($base_url . '/github/register/create');
 
   $form_state['redirect'] = $link;
 }
