@@ -45,6 +45,7 @@ function github_connect_get_access_token() {
         if ($existing_user_by_mail = user_load_by_mail($github_user['email'])) {
           // If a user with this email address exists, let him connect the github account to his already created account.
           watchdog('github_connect', 'User with email !email already exists, redirecting', array('!email' => $github_user['email']), WATCHDOG_DEBUG);
+          unset($_GET['destination']);//Remove an existing destination parameter that drupal_goto will allow as an override.
           drupal_goto('github/verify/email/' . $existing_user_by_mail->uid . '/' . $token);
         }
         else {
