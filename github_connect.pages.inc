@@ -28,8 +28,13 @@ function github_connect_get_access_token() {
   $token = $response->data;
 
   if ($token) {
-    // Check if a user exists for the token.
-    $account = github_connect_get_token_user($token);
+    
+    //Get user details from GitHub to handle user association.
+    $github_user = _github_connect_get_github_user_info($token);
+    if ($github_user && !empty($github_user['html_url'])) {
+      //Check the authmap for an existing associated account.
+      $account = user_external_load($github_user['html_url']);
+    }
 
     if ($user->uid == 0) { // First the case where an anonymous user attempts a login
       watchdog('github_connect', 'An anonymous user attempts login', array(), WATCHDOG_DEBUG);
@@ -39,7 +44,6 @@ function github_connect_get_access_token() {
         drupal_goto();
       }
       else { // Otherwise register the user and log in
-        $github_user = _github_connect_get_github_user_info($token);
         watchdog('github_connect', 'Registering a user', array(), WATCHDOG_DEBUG);
 
         if ($existing_user_by_mail = user_load_by_mail($github_user['email'])) {
