@@ -1,5 +1,6 @@
 <?php
 
+
 /**
  * @file
  * Administration page callbacks for the GitHub connect module.
@@ -33,6 +34,41 @@ function github_connect_admin_settings_form($form_state) {
     '#maxlength' => 50,
     '#required' => TRUE,
   );
-
-  return system_settings_form($form);
+  
+  $form['github_connect_settings'][OAuthScope::$variableName] = array(
+    '#title' => t('Required Scopes'),
+    '#type' => 'checkboxes',
+    '#theme' => 'github_connect_checkboxes',
+  );
+  foreach(OAuthScope::getScopeOptions() as $key => $value) {
+    $form['github_connect_settings'][OAuthScope::$variableName]['#options'][$key] = 0;
+  }
+  
+  $form = system_settings_form($form);
+  return $form;
 }
+
+function theme_github_connect_checkboxes($variables) {
+  
+  $elements = array();
+  foreach($variables as $key => $settings) {
+    $name = OAuthScope::$variableName . '[' . $key . ']';
+    $elements[] = array(
+      '#attributes' => array(
+        'name' => $name,
+        'id' => drupal_clean_css_identifier($name),
+      ),
+      '#type' => 'checkbox',
+      '#return_value' => $key,
+      '#title' => $settings['title'],
+      '#parents' => array(OAuthScope::$variableName),
+      '#description' => $settings['description'],
+    );
+  }
+  
+  return drupal_render($elements);
+}
+
+
+
+
